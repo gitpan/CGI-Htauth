@@ -967,27 +967,28 @@ CGI::Htauth.pm - Authentication services for CGI scripts.
 	EOT
 
 	if ($AUTH_USER eq 'fred') {
-		# fred has logged in by password or challenge-response ...
-		my $form = CGI::FormBuilder->new(
-			params => $CGI,   # necessary when also using Htauth !
-			keepextras => 1,  # necessary when also using Htauth !
-			method => 'POST', # necessary when also using Htauth !
-			fields => [qw(thisfield thatfield theotherfield email)],
-			validate => {email => 'EMAIL'},
-		);
-		if (!$form->submitted || !$form->validate) {
-			&output($form->render); &footer();  # Must use output not print
-		}
-		&do_fred_stuff();
+	  # fred has logged in by password or challenge-response ...
+	  my $form = CGI::FormBuilder->new(
+	    params => $CGI,   # necessary when also using Htauth !
+	    keepextras => 1,  # necessary when also using Htauth !
+	    method => 'POST', # necessary when also using Htauth !
+	    fields => [qw(thisfield thatfield theotherfield email)],
+	    validate => {email => 'EMAIL'},
+	  );
+	  if (!$form->submitted || !$form->validate) {
+	    &output($form->render);  # Must use output not print !
+	    &footer();
+	  }
+	  &do_fred_stuff();
 	} else {
-		&do_other_stuff();
+	  &do_other_stuff();
 	}
 
 	sub header {
-		output "<HTML><HEAD><TITLE>$_[$[]</TITLE></HEAD><BODY>\n";
+	  output "<HTML><HEAD><TITLE>$_[$[]</TITLE></HEAD><BODY>\n";
 	}
 	sub footer {
-		output "<HR></BODY></HTML>\n";
+	  output "<HR></BODY></HTML>\n";
 	}
 
 =head1 DESCRIPTION

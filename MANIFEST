@@ -1,7 +1,7 @@
-Clui.pm
-Htauth.raw
+Clui
+Htauth.pm
 Makefile.PL
 MANIFEST
 README
-htauth_demo.raw
+htauth_demo.cgi
 Changes

@@ -1,5 +1,5 @@
 #! /usr/bin/perl
-require './Clui.pm'; import Term::Clui;
+require './Clui'; import Term::Clui;
 
 &check_kit;
 &check_infrastructure('CGI.pm','CGI::FormBuilder.pm','Crypt::Tea.pm');
@@ -18,7 +18,7 @@ Use the arrow keys (or h,j,k,l) and <Return> to make your choices.
 
 EOT
 
-my $version = '1.12';
+my $version = '1.13';
 # my $bindir  = &bindir;
 my ($cgidir, $url, $webuser) = &cgidir;
 my $libdir  = &libdir . '/CGI';
@@ -36,7 +36,7 @@ if ($mandir)  { print F "MANDIR = $mandir\n"; }
 
 print F <<'EOT';
 
-local : Htauth.pm htauth_demo.cgi
+local : Htauth.local htauth_demo.local
 
 EOT
 if ($cgidir || $mandir) { print F <<'EOT';
@@ -60,32 +60,32 @@ EOT
 
 print F <<'EOT';
 
-Htauth.pm : localise Htauth.raw
-	./localise Htauth.raw > $@
+Htauth.local : localise Htauth.pm
+	./localise Htauth.pm > $@
 
-htauth_demo.cgi : localise htauth_demo.raw
-	./localise htauth_demo.raw > $@
+htauth_demo.local : localise htauth_demo.cgi
+	./localise htauth_demo.cgi > $@
 
-${LIBDIR}/Htauth.pm : Htauth.pm
-	perl -c Htauth.pm
+${LIBDIR}/Htauth.pm : Htauth.local
+	perl -c Htauth.local
 	test -d ${LIBDIR} || mkdir ${LIBDIR}
 	chmod 755 ${LIBDIR}
-	cp Htauth.pm $@
+	cp Htauth.local $@
 	chmod 644 $@
 
 EOT
 
 if ($cgidir) { print F <<'EOT'; }
-${CGIDIR}/htauth_demo.cgi : htauth_demo.cgi
-	perl -c htauth_demo.cgi
-	cp htauth_demo.cgi $@
+${CGIDIR}/htauth_demo.cgi : htauth_demo.local
+	perl -c htauth_demo.local
+	cp htauth_demo.local $@
 	chmod 755 $@
 
 EOT
 
 if ($mandir) { print F <<'EOT'; }
-${MANDIR}/CGI_Htauth.3 : Htauth.pm
-	pod2man Htauth.pm > $@
+${MANDIR}/CGI_Htauth.3 : Htauth.local
+	pod2man Htauth.local > $@
 	chmod 644 $@
 	cp $@ ${MANDIR}/CGI::Htauth.3
 	chmod 644 ${MANDIR}/CGI::Htauth.3
@@ -322,10 +322,10 @@ sub check_kit {
 	print STDERR "Checking your kit ... ";
 
 	my %file_sizes = (
-		'MANIFEST', 71,
-		'Makefile.PL', 9933,
-		'Htauth.raw', 44571,
-		'htauth_demo.raw', 2248,
+		'MANIFEST', 67,
+		'Makefile.PL', 9958,
+		'Htauth.pm', 44599,
+		'htauth_demo.cgi', 2248,
 	);
 
 	my $problem_found = 0;
