@@ -1,7 +1,6 @@
-Clui
 Htauth.pm
 Makefile.PL
 MANIFEST
 README
-htauth_demo.cgi
+examples/htauth_demo.cgi
 Changes

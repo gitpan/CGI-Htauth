@@ -1,6 +1,5 @@
 #! #PERLBIN#
 # VERSION #VERSION#
-# #COMMENT#
 use CGI; use CGI::FormBuilder; use CGI::Htauth;
 
 my $CGI = new CGI; # must be here so both FormBuilder & Htauth have access

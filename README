@@ -1,13 +1,10 @@
+                     CGI::Htauth.pm
 _____________________________________________________________
 
                  *****  WARNING  *****
-   This version of CGI::Htauth is an early alpha version,
-            still very much under deveopment,
-      and many important features are not working ...
+  This version of CGI::Htauth is an early alpha version, very
+  much under deveopment, and important features are not working ...
 _____________________________________________________________
-
-
-CGI::Htauth   adhfp Authentication and encryption for http   PJB
 
 CGI::Htauth offers a variety of authentication mechanisms to the
 CGI programmer.  The main subroutine is &authenticate($config)
@@ -18,12 +15,24 @@ modes to be offered to different IP addresses or ranges. Possible
 modes include allow, deny, password and challenge-response.
 
 CGI::Htauth uses Crypt::Tea to provide the encryption engine both
-in Perl on the server and in Javascript on the browser.  It also
+in Perl on the server, and in Javascript on the browser.  It also
 uses CGI::FormBuilder and CGI.pm.
+
+To install ( cool ! new ! interactive ! ) just:
+   perl Install
+(but this doesn't yet work yet under Windows)
+
+that's all ! or you can still do it the old way ...
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+For up-to-date source, see http://www.cpan.org/SITES.html
 
 From a non-JavaScript browser, password login works a bit like
 username/password login usually works, except that it also checks
-that the IP and browser dont change during the session, handles
+that the IP and browser don't change during the session, handles
 timeouts, and offers buttons for logout and password changing.
 
 From a JavaScript browser, password login installs the encryption
@@ -36,10 +45,4 @@ in the mode in which it asks for the user's password and transmits
 it over an encrypted connection.  Again, timeouts are handled and
 there are built-in buttons for logout and password changing.
 
-To install CGI::Htauth.pm in the @INC path, and optionally the
-test/demo CGI script in a local CGI directory,
-   perl Makefile.PL
-   make
-   make install
-
-For up-to-date source, see http://www.cpan.org/SITES.html
+Peter J Billam    computing@pjb.com.au    http://www.pjb.com.au

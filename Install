@@ -1,0 +1,302 @@
+#! /usr/bin/perl
+require './Clui'; import Term::Clui;
+use Config;
+
+&check_kit;
+
+my $libdir; my $man3dir; my $comment; my $perlbin;
+my $version = '1.20';
+($libdir, $man3dir) = &defaults();
+
+if (! -t STDIN) {  # not interactive, use defaults ...
+	if (! $libdir) { die "Sorry, can't write to $libdir\n"; }
+	&install($libdir, $man3dir);
+	exit 0;
+}
+
+if ($libdir) {
+	my $choice = &choose('Installing ...', 'interactively',
+	'using system default locations', 'Cancel');
+	if ($choice eq 'Cancel') { exit 0; }
+	if ($choice eq 'using system default locations') {
+		if (! $libdir) { die "Sorry, can't write to $libdir\n"; }
+		&install($libdir, $man3dir);
+		exit 0;
+	}
+}
+
+$libdir  = &libdir . '/CGI';
+my $man3dir  = &mandir;
+my ($cgidir, $url, $webuser) = &cgidir;
+&install($libdir, $man3dir, $cgidir, $url, $webuser);
+exit 0;
+
+# --------------------- infrastructure ---------------------
+
+sub defaults {
+	my $libdir = $Config{installsitelib};
+	my $man3dir = $Config{installman3dir};
+	if (!-w $libdir) { $libdir = ''; }
+	if (!-w $man3dir) { $man3dir = ''; }
+	return ($libdir, $man3dir);
+}
+
+sub install {  my ($libdir, $man3dir, $cgidir, $url, $webuser) = @_;
+	if (! $libdir) { die "Sorry, can't write to $libdir\n"; }
+	$comment = &comment($libdir, $man3dir, $cgidir);
+	$perlbin = &which('perl');
+	if (! $perlbin) { die "Sorry, no perl in PATH\n"; }
+
+	@localised_lib = &localise('Htauth.pm');
+
+	print STDERR "installing $libdir/Htauth.pm ...";
+	if (!-d $libdir) { mkdir $libdir, 0755; }
+	chmod 0755, $libdir;
+	my $target = "$libdir/Htauth.pm";
+	if (! open (P, "> $target")) { die "\nSorry, can't open $target: $!\n"; }
+	print P @localised_lib;  close P;
+	chmod 0644, $target;
+	print STDERR "\n";
+
+	if ($man3dir) {
+		my $target = "$man3dir/CGI::Htauth.3";
+		print STDERR "installing $target ...";
+		my $tmpfile = "/tmp/CGI::Htauth";  # can't pipe into pod2man :-(
+		if (! open (T, ">$tmpfile")) {die "\nSorry, can't open $tmpfile: $!\n";}
+		print T @localised_lib;  close T;
+		system "pod2man $tmpfile > $target";
+		unlink $tmpfile;
+		chmod 0644, $target;
+		print STDERR "\n";
+	}
+
+	if ($cgidir) {
+		my $target = "$cgidir/htauth_demo.cgi";
+		print STDERR "installing $target ...";
+		my @localised_cgi = &localise('examples/htauth_demo.cgi');
+		if (! open (T, "> $target")) { die "\nSorry, can't open $target: $!\n"; }
+		print T @localised_cgi;  close T;
+		chmod 0755, $target;
+		print STDERR "\nFor demo see http://localhost$url/htauth_demo.cgi\n";
+	}
+}
+
+sub localise { my $file = $_[$[];
+	if (! open(F, $file)) { die "can't open $file: $!\n"; }
+	my @localised = ();
+	while (<F>) {
+		if ($comment) { s/#COMMENT#/$comment/; }
+		s/#PERLBIN#/$perlbin/;
+		s/#!perl/$perlbin/;
+		s/#LIBDIR#/$libdir/;
+		if ($version) { s/#VERSION#/$version/; }
+		push @localised, $_;
+	}
+	close F;
+	return @localised;
+}
+
+sub libdir {
+	my (@libdirs, @tried, @writeable, $libdir);
+	@libdirs = grep (!/^\.$/, @INC);
+	if ($cgidir) { unshift @libdirs, $cgidir; }
+	foreach $dir (@libdirs) {
+		next if ($dir eq '.');
+		push @tried, $dir;
+		if (-w $dir) { push @writeable, $dir; }
+	}
+	if (! @writeable) {
+		
+		$libdir = &ask(<<'EOT');
+Where should the module be installed ?
+
+You don't have write permission to any of the directories in your
+@INC path; if you wish to install in some other directory, enter it ...
+EOT
+		if (! $libdir) { die "not installing, nowhere to install module\n"; }
+		if (! -d $libdir) { die "Sorry, $libdir is not a directory.\n"; }
+		if (! -w $libdir) { die "Sorry, $libdir is not writeable.\n"; }
+	} else {
+		$libdir = &choose("Where should the module be installed ?",
+			@writeable, 'Somewhere Else');
+		if ($libdir eq 'Somewhere Else') {
+			$libdir = &ask('in which directory, then ?');
+			if (! $libdir) { die "not installing, nowhere to install\n"; }
+			if (! -d $libdir) { die "Sorry, $libdir is not a directory.\n"; }
+			if (! -w $libdir) { die "Sorry, $libdir is not writeable.\n"; }
+		}
+		if (! $libdir) { die "Sorry, nowhere to install the module\n"; }
+	}
+	$libdir =~ s/\/$//;
+	return $libdir;
+}
+
+sub mandir {
+	my (@tried, @writeable, $mandir);
+	foreach $dir (split(/:/, $ENV{MANPATH})) {
+		push @tried, $dir;
+		if (-w "$dir/man3") { push @writeable, $dir; }
+	}
+	if (! @writeable) {
+		my $manpath = join ("\n   ", @tried);
+		$mandir = &ask(<<EOT);
+Where should the manual be installed ?
+
+You don't have write permission to any of the directories in your
+\@MANPATH; tried:
+   $manpath
+
+If you wish to put the manual in some other directory, enter it ...
+EOT
+		if (! $mandir) { $mandir = 'Do Not Install Manual';
+		} elsif (! -d $mandir) { die "Sorry, $mandir is not a directory.\n";
+		} elsif (! -w $mandir) { die "Sorry, $mandir is not writeable.\n";
+		}
+	} else {
+		$mandir = &choose(
+			"Where should the manual be installed ?",
+			@writeable, 'Somewhere Else', 'Do Not Install Manual');
+	}
+	if ($mandir eq 'Somewhere Else') {
+		$mandir = &ask('in which directory, then ?');
+		if (! $mandir) { die "not installing, nowhere to install\n"; }
+		if (! -d $mandir) { die "Sorry, $mandir is not a directory.\n"; }
+		if (! -w $mandir) { die "Sorry, $mandir is not writeable.\n"; }
+	} elsif ($mandir eq 'Do Not Install Manual') {
+		return '';
+	} elsif (! $mandir) {
+		die "Sorry, nowhere to install the manual\n";
+	}
+	$mandir =~ s/\/$//;
+	if (!-d "$mandir/man3") { mkdir "$mandir/man3", 0755; }
+	return ("$mandir/man3");
+}
+
+sub cgidir {
+	my (@tried, @writeable, %cgidirs, $cgidir, %webusers);
+	my @configfiles = (
+		'/etc/httpd/httpd.conf',
+		'/etc/httpd.conf',
+		'/usr/local/etc/httpd/httpd.conf',
+		'/usr/local/etc/httpd/srm.conf',
+	);
+	my (@existing, @readable);
+	foreach $file (@configfiles) {
+		my ($cgid, $url, $webuser);
+		if (-f $file) { push @existing, $file; } else { next; }
+		next unless open (F, $file);
+		push @readable, $file;
+		while (<F>) {
+			if (/^\s*ScriptAlias\s+(\S+)\s+(\S+)$/) {
+				$url = $1; $cgid = $2;
+				$cgid =~ s/^"(.*)"$/$1/;
+				$cgidirs{$cgid} = $url;
+				if ($webuser) { $webusers{$cgid} = $webuser; }
+			} elsif (/^\s*User\s+(\S+)$/) {
+				$webuser = $1;
+				if ($cgid) { $webusers{$cgid} = $webuser; }
+			}
+		}
+		close F;
+	}
+	foreach $dir (keys %cgidirs) {
+		push @tried, $dir;
+		if (-w $dir) { push @writeable, $dir; }
+	}
+
+	if (! @existing) {
+		print STDERR <<EOT, "   ", join ("\n   ", @configfiles), "\n" ;
+Hmm, can't find any httpd config files; tried
+EOT
+	} elsif (! @readable) {
+		print STDERR <<EOT, "   ", join ("\n   ", @existing), "\n" ;
+Hmm, can't read any httpd config files; tried
+EOT
+	} elsif (! %cgidirs) {
+		print STDERR <<EOT, "   ", join ("\n   ", @readable), "\n" ;
+Hmm, can't find any cgi-bin directories in the config files; tried
+EOT
+	} elsif (! @writeable) {
+		print STDERR <<EOT, "   ", join ("\n   ", @tried), "\n" ;
+Hmm, can't write to any of the cgi-bin directories; tried
+EOT
+	}
+
+	if (@writeable) {
+		$cgidir = &choose( "Where should the test/demo CGI be installed ?",
+			@writeable, 'Somewhere else', 'Do not install it');
+	} else {
+		$cgidir = 'Somewhere else';
+	}
+
+	if (! $cgidir) { return ''; }
+	if ($cgidir =~ /^Do not install/) { return ''; }
+	if ($cgidir eq 'Somewhere else') {
+		$cgidir = &ask('in which directory, then ?');
+		if (! $cgidir)    { return ''; }
+		if (! -d $cgidir) { die "Sorry, $cgidir is not a directory.\n"; }
+		if (! -w $cgidir) { die "Sorry, $cgidir is not writeable.\n"; }
+	}
+	my $url = $cgidirs{$cgidir};
+	my $webuser = $webusers{$cgidir};
+	$url =~ s/\/$//;
+	$cgidir =~ s/\/$//;
+	return ($cgidir, $url, $webuser);
+}
+
+sub comment { my ($libdir, $man3dir) = @_;
+	my $user = (getpwuid($>))[$[];
+	my $build_dir = `pwd`; $build_dir =~ s/\s+$//;
+	my $datestamp = &datestamp;
+	my $comment = "made $datestamp by $user in $build_dir";
+	my $mandir = $man3dir; $mandir =~ s#/man[13]$##;
+	if ($libdir) { $comment .= ",\nmodule installed in $libdir"; }
+	if ($mandir) { $comment .= ",\nmanual installed in $mandir"; }
+	if ($cgidir) { $comment .= ",\ntest/demo CGI installed in $cgidir"; }
+	return $comment;
+}
+sub which { my $file = $_[$[];   # looks for executables, Perl libraries
+	return '' unless $file;
+	my $absfile;
+	if ($file =~ /\.p[lm]$/) {   # perl library or module ?
+		foreach $dir (@INC) {
+			$absfile = "$dir/$file";	return $absfile if -r $absfile;
+		}
+	} else {	# executable ?
+		foreach $dir (split (":", $ENV{PATH})) {
+			$absfile = "$dir/$file";	return $absfile if -x $absfile;
+		}
+	}
+}
+sub datestamp { # returns current date in "19940314" format
+	local ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime;
+	sprintf ("%4.4d%2.2d%2.2d", $year+1900, $mon+1, $mday);
+}
+
+sub check_kit {
+	print STDERR "Checking your kit ... ";
+
+	my %file_sizes = (
+		'README', 2082,
+		'Changes', 272,
+		'MANIFEST', 71,
+		'Htauth.pm', 44656,
+		'Clui', 29488,
+	);
+
+	my $problem_found = 0;
+	foreach $file (keys %file_sizes) {
+		if (! -f $file) {
+			if (! $problem_found) { $problem_found = 1; print STDERR "\n"; }
+			print STDERR "   missing: $file\n"
+		} elsif (-s $file != $file_sizes{$file}) {
+			if (! $problem_found) { $problem_found = 1; print STDERR "\n"; }
+			my $is = -s $file;
+			my $should = $file_sizes{$file};
+			print STDERR "   wrong size: $file is $is, should be $should bytes\n"
+		}
+	}
+	if ($problem_found) { exit 1;
+	} else { print STDERR "Looks good.\n"; return 1;
+	}
+}

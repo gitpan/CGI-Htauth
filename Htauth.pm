@@ -7,10 +7,9 @@
 #            modify it under the same terms as Perl itself.             #
 #########################################################################
 #
-# VERSION #VERSION#, #COMMENT#
 
 package CGI::Htauth;
-$VERSION = '#VERSION';
+$VERSION = '1.20'; # NOTE: also change version number in POD
 
 use Exporter; @ISA = qw(Exporter);
 @EXPORT=qw(initialise_htauth output authenticate set_password $AUTH_USER);
@@ -1019,7 +1018,7 @@ and uses CGI::FormBuilder.pm to manage the data entry.
 Very often the cgi programmer will be using CGI::FormBuilder.pm anyway,
 to write the application.
 
-Version #VERSION#,
+Version 1.20,
 #COMMENT#
 
 =head1 SUBROUTINES
@@ -1239,8 +1238,9 @@ Peter J Billam <computing@pjb.com.au>
 =head1 CREDITS
 
 Based on and older module called I<htauth.pm> which
-used I<htui.pm> to handle the user interface instead of
-Nathan Wiger's I<CGI::FormBuilder.pm>
+used I<htui.pm> to handle the user interface, instead of
+Nathan Wiger's I<CGI::FormBuilder.pm>.
+Thanks also to Neil Watkiss for MakeMaker packaging.
 
 =head1 SEE ALSO
 

@@ -1,4 +1,5 @@
 20020317 CGI-Htauth-1.10
-20020318 CGI-Htauth-1.11 As presented in talk to SAGE/AUUG conference
-20020509 CGI-Htauth-1.12 logout and change_passwd work better for JS browsers
-20020522 CGI-Htauth-1.13 mv Htauth.raw Htauth.pm and mv Clui.pm Clui for CPAN
+20020318 1.11 As presented in talk to SAGE/AUUG conference
+20020509 1.12 logout and change_passwd work better for JS browsers
+20020522 1.13 mv Htauth.raw Htauth.pm and mv Clui.pm Clui for CPAN
+20020617 1.20 Makefile.PL uses MakeMaker; new Install
