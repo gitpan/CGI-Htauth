@@ -57,7 +57,7 @@ sub initialise_htauth { $CGI = shift;
 	# waste time recovering the stuff that CGI.pm stole from us
 	if (! ref $CGI) {&fatal("initialise_htauth arg must be a CGI ref\n");}
 	%DAT = (); foreach ($CGI->param()) { $DAT{$_} = $CGI->param($_); }
-	my $t = &timestamp();
+	my $t = &timestamp();   # ???
 	$initialised = 1;
 }
 
@@ -99,12 +99,12 @@ s/action="[^"]*"/action="javascript:parent.encrypt_and_submit(this.document.form
 	push @to_be_output, $str; return 1;
 }
 
-sub authenticate {  my $config = shift;  $CGI = shift;
+sub authenticate {  my $config = shift;  my $CGIarg = shift;
 	if (! $config) { &fatal("can't authenticate: no configuration."); }
 	if (! $initialised) {
 		&fatal('&initialise_htauth must be called before &authenticate');
 	}
-	&initialise_htauth($CGI);   # in case the application has fiddled vars
+	&initialise_htauth($CGIarg);  # in case the application has fiddled vars
 	$AUTH_USER = '';
 
 	my @config_lines;
@@ -218,7 +218,7 @@ parent.htauth_frame0.document.htauth_form1.htauth_k.value = '$DAT{htauth_k}';
 // -->
 </SCRIPT>
 <CENTER><P>Welcome $DAT{htauth_u}. This session lasts for $mins&nbsp;minutes.
-You may <A HREF="$ENV{SCRIPT_NAME}?$query_string&htauth_x=change">
+You may <A HREF="$ENV{SCRIPT_NAME}?htauth_x=change&$query_string">
 change your password</A> or
 <A HREF="javascript:parent.remember_htauth_p = '';
 parent.htauth_frame0.document.htauth_form2.submit();">log out</A>
@@ -227,7 +227,8 @@ EOT
 			return 1;
 		}
 
-		if ($DAT{htauth_u} && $DAT{htauth_k}) {  # on-going JS session :-)
+		if ($DAT{htauth_u} && $DAT{htauth_j} && $DAT{htauth_k}) {
+			# on-going JS session :-)
 			# We again assume that &tea_in_javascript resides in the FRAMESET
 			# and the hidden_forms in the frame htauth_frame0 ... &output must
 			# fiddle the ACTION= of forms in htauth_frame1 to invoke the JS.
@@ -287,7 +288,7 @@ EOT
 		}
 
 		if ($DAT{htauth_u} && $DAT{htauth_k} && !$DAT{htauth_j}) {
-			&check_htauth_k();
+			my $time_from_db = &check_htauth_k();
 
 			# ----------- JavaScript not running ; timeout ? -----------
 			if ($time_from_db < (time - $timeout)) {
@@ -487,13 +488,8 @@ sub query_string {  my $hashref = shift;
 	return join('&', @query_string);
 }
 sub zap {   # CGI->param and CGI->delete both crash if value isn't there :-(
-	if (! defined $CGI) { print "zap: \$CGI not defined<BR>\n"; }
-	foreach (@_) {
-		# if (defined $CGI->param($_)) { $CGI->delete($_); }
-		eval '$CGI->delete($_);';
-		# print "zap '$_' "; if ($@) { print $@; } print "<BR>\n";
-		delete $DAT{$_};
-	}
+	if (! defined $CGI) { &fatal('zap: $CGI not defined'); }
+	foreach (@_) { eval { $CGI->delete($_); }; delete $DAT{$_}; }
 }
 sub str2js {
 	my @lines = split (/\n/, join ('', @_));
@@ -533,7 +529,7 @@ sub non_js_pw_login {
 		keepextras => 1, required => 'ALL',
 		fields => [qw/htauth_u htauth_p/],
 		labels => { htauth_u=>'Username', htauth_p=>'Password' },
-		reset => 0, submit => 'Login form3',
+		reset => 0, submit => 'Login',
 	);
 	$form3->field(name=>'htauth_p',type=>'password');
 	print '<CENTER>',$form3->render,"</CENTER>\n"; &footer; exit 0;
@@ -726,7 +722,7 @@ sub check_htauth_k {
 	if ($name_from_db ne $DAT{htauth_u}) {
 		&fatal ("The key in your URL does not fit your username.");
 	}
-	return 1;
+	return $time_from_db;
 }
 sub remember_htauth_k {
 	# we just give them a random key in their url, to which they can return

@@ -320,7 +320,7 @@ sub check_kit {
 	my %file_sizes = (
 		'MANIFEST', 63,
 		'Makefile.PL', 9844,
-		'Htauth.raw', 39869,
+		'Htauth.raw', 39806,
 		'htauth_demo.raw', 2248,
 	);
 
