@@ -1,0 +1,45 @@
+_____________________________________________________________
+
+                 *****  WARNING  *****
+   This version of CGI::Htauth is an early alpha version,
+            still very much under deveopment,
+      and many important features are not working ...
+_____________________________________________________________
+
+
+CGI::Htauth   adhfp Authentication and encryption for http   PJB
+
+CGI::Htauth offers a variety of authentication mechanisms to the
+CGI programmer.  The main subroutine is &authenticate($config)
+
+$config can be either a string or a filename, and looks a bit
+like a simple router configuration, with different authentication
+modes to be offered to different IP addresses or ranges. Possible
+modes include allow, deny, password and challenge-response.
+
+CGI::Htauth uses Crypt::Tea to provide the encryption engine both
+in Perl on the server and in Javascript on the browser.  It also
+uses CGI::FormBuilder and CGI.pm.
+
+From a non-JavaScript browser, password login works a bit like
+username/password login usually works, except that it also checks
+that the IP and browser dont change during the seesion, handles
+timeouts, and offers buttons for logout and password changing.
+
+From a JavaScript browser, password login installs the encryption
+engine in a parent frameset and remembers the password in a JavaScript
+variable there. The user is authenticated by encrypting a random
+challenge, so the password is never transmitted.  Once a user is
+logged in, subsequent traffic in both directions is encrypted.  The
+level of security is more or less equivalent to that offered by ssh
+in the mode in which it asks for the user's password and transmits
+it over an encrypted connection.  Again, timeouts are handled and
+there are built-in buttons for logout and password changing.
+
+To install CGI::Htauth.pm in the @INC path, and optionally the
+test/demo CGI script in a local CGI directory,
+   perl Makefile.PL
+   make
+   make install
+
+For up-to-date source, see http://www.cpan.org/SITES.html
