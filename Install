@@ -5,12 +5,12 @@ use Config;
 &check_kit;
 
 my $libdir; my $man3dir; my $comment; my $perlbin;
-my $version = '1.20';
+my $version = '1.21';
 ($libdir, $man3dir) = &defaults();
 
 if (! -t STDIN) {  # not interactive, use defaults ...
 	if (! $libdir) { die "Sorry, can't write to $libdir\n"; }
-	&install($libdir, $man3dir);
+	&install("$libdir/CGI", $man3dir);
 	exit 0;
 }
 
@@ -20,15 +20,15 @@ if ($libdir) {
 	if ($choice eq 'Cancel') { exit 0; }
 	if ($choice eq 'using system default locations') {
 		if (! $libdir) { die "Sorry, can't write to $libdir\n"; }
-		&install($libdir, $man3dir);
+		&install("$libdir/CGI", $man3dir);
 		exit 0;
 	}
 }
 
-$libdir  = &libdir . '/CGI';
+$libdir  = &libdir;
 my $man3dir  = &mandir;
 my ($cgidir, $url, $webuser) = &cgidir;
-&install($libdir, $man3dir, $cgidir, $url, $webuser);
+&install("$libdir/CGI", $man3dir, $cgidir, $url, $webuser);
 exit 0;
 
 # --------------------- infrastructure ---------------------
@@ -49,10 +49,10 @@ sub install {  my ($libdir, $man3dir, $cgidir, $url, $webuser) = @_;
 
 	@localised_lib = &localise('Htauth.pm');
 
-	print STDERR "installing $libdir/Htauth.pm ...";
+	my $target = "$libdir/Htauth.pm";
+	print STDERR "installing $target ...";
 	if (!-d $libdir) { mkdir $libdir, 0755; }
 	chmod 0755, $libdir;
-	my $target = "$libdir/Htauth.pm";
 	if (! open (P, "> $target")) { die "\nSorry, can't open $target: $!\n"; }
 	print P @localised_lib;  close P;
 	chmod 0644, $target;
@@ -278,7 +278,7 @@ sub check_kit {
 
 	my %file_sizes = (
 		'README', 2082,
-		'Changes', 272,
+		'Changes', 323,
 		'MANIFEST', 71,
 		'Htauth.pm', 44656,
 		'Clui', 29488,

@@ -9,7 +9,7 @@
 #
 
 package CGI::Htauth;
-$VERSION = '1.20'; # NOTE: also change version number in POD
+$VERSION = '1.21'; # NOTE: also change version number in POD
 
 use Exporter; @ISA = qw(Exporter);
 @EXPORT=qw(initialise_htauth output authenticate set_password $AUTH_USER);
@@ -1018,7 +1018,7 @@ and uses CGI::FormBuilder.pm to manage the data entry.
 Very often the cgi programmer will be using CGI::FormBuilder.pm anyway,
 to write the application.
 
-Version 1.20,
+Version 1.21,
 #COMMENT#
 
 =head1 SUBROUTINES
@@ -1037,13 +1037,13 @@ The argument $config_txt is either a multiline text string,
 or the name of a file containing such a string.
 IP addresses (indicated as IPADDR) may contain *
 which matches any string of up to three digits.
+The second argument is again the reference to the CGI object.
 
 The first config line that matches the client IP address $ENV{REMOTE_ADDR}
 will determine the type of authentication to which the client is subject.
 If the user has logged in, either by password or by challenge-response,
 then the (exported) Perl variable $AUTH_USER is set to the username.
 
-The second argument is the reference to the CGI object again.
 
 =over 5
 

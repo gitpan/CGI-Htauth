@@ -3,3 +3,4 @@
 20020509 1.12 logout and change_passwd work better for JS browsers
 20020522 1.13 mv Htauth.raw Htauth.pm and mv Clui.pm Clui for CPAN
 20020617 1.20 Makefile.PL uses MakeMaker; new Install
+20020626 1.21 Install gets default locations right
