@@ -4,7 +4,9 @@ require './Clui.pm'; import Term::Clui;
 &check_kit;
 &check_infrastructure('CGI.pm','CGI::FormBuilder.pm','Crypt::Tea.pm');
 
-print STDERR <<EOT;
+&confirm (<<'EOT') || exit;
+OK to proceed ?
+
 The behaviour of this script varies according to which directories
 you can write to; therefore you should run it as the same user (eg
 root) that will execute the 'make install' step.
@@ -16,7 +18,7 @@ Use the arrow keys (or h,j,k,l) and <Return> to make your choices.
 
 EOT
 
-my $version = '1.10';
+my $version = '1.12';
 # my $bindir  = &bindir;
 my ($cgidir, $url, $webuser) = &cgidir;
 my $libdir  = &libdir . '/CGI';
@@ -85,6 +87,8 @@ if ($mandir) { print F <<'EOT'; }
 ${MANDIR}/CGI_Htauth.3 : Htauth.pm
 	pod2man Htauth.pm > $@
 	chmod 644 $@
+	cp $@ ${MANDIR}/CGI::Htauth.3
+	chmod 644 ${MANDIR}/CGI::Htauth.3
 
 EOT
 
@@ -318,9 +322,9 @@ sub check_kit {
 	print STDERR "Checking your kit ... ";
 
 	my %file_sizes = (
-		'MANIFEST', 63,
-		'Makefile.PL', 9844,
-		'Htauth.raw', 39806,
+		'MANIFEST', 71,
+		'Makefile.PL', 9933,
+		'Htauth.raw', 44571,
 		'htauth_demo.raw', 2248,
 	);
 
@@ -337,7 +341,7 @@ sub check_kit {
 		}
 	}
 	if ($problem_found) { exit 1;
-	} else { print STDERR "Looks good.\n\n"; return 1;
+	} else { print STDERR "Looks good.\n"; return 1;
 	}
 }
 1;

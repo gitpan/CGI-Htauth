@@ -10,7 +10,7 @@
 # VERSION #VERSION#, #COMMENT#
 
 package CGI::Htauth;
-$VERSION = '1.10';
+$VERSION = '#VERSION';
 
 use Exporter; @ISA = qw(Exporter);
 @EXPORT=qw(initialise_htauth output authenticate set_password $AUTH_USER);
@@ -76,7 +76,7 @@ s/action="[^"]*"/action="javascript:parent.encrypt_and_submit(this.document.form
 		# "this" is only the window :-( should increment through the forms
 	}
 	if ($str =~ /^(.*)(<BODY.*)/is) { # if <BODY, print header
-		if ($DAT{htauth_r} || $DAT{htauth_t}) {
+		if ($DAT{htauth_r} || $DAT{htauth_t} || $AUTH_USER) {
 			print @to_be_output, $1;
 		}
 		@to_be_output = (); $str = $2;
@@ -88,8 +88,7 @@ s/action="[^"]*"/action="javascript:parent.encrypt_and_submit(this.document.form
 			push @to_be_output, $1;  my $footer = $2;
 			&encrypt_and_write((join '',@to_be_output),
 				&get_password($DAT{htauth_u}));
-			print $footer;
-			return 1;
+			print $footer; return 1;
 		} else {  # probably half-way through JS login
 			# @to_be_output should be quoted and put into htauth_frame1
 			# by &authenticate 
@@ -165,8 +164,8 @@ sub authenticate {  my $config = shift;  my $CGIarg = shift;
 		if ($DAT{htauth_u} && $DAT{htauth_r}) {
 			# JavaScript has responded to our challenge ...  We assume that
 			# &tea_in_javascript resides in the FRAMESET and the hidden_forms
-			# in the top frame htauth_frame0 ... We must fiddle the ACTION=
-			# of forms in htauth_frame1 to invoke the JS
+			# in the top frame htauth_frame0 ... In &output we must fiddle
+			# the ACTION= of forms in htauth_frame1 to invoke the JS
 
 			eval "require 'Crypt/Tea.pm';"; if ($@) {
 				fatal ("can't require Tea.pm but htauth_r = $DAT{htauth_r} !");
@@ -187,7 +186,7 @@ parent.remember_htauth_p = '';
 <CENTER><P><B>Sorry, wrong password. Please
 <A HREF="javascript:parent.htauth_frame0.document.htauth_form1.submit();">
 try again</A> or
-<A HREF="$ENV{SCRIPT_NAME}" TARGET="_parent">
+<A HREF="$ENV{SCRIPT_NAME}" TARGET="_top">
 restart</A>&nbsp;.&nbsp;.&nbsp;.</B></P></CENTER>
 EOT
 				&footer; exit 0;
@@ -205,8 +204,7 @@ EOT
 			}
 			output "// -->\n</SCRIPT>\n";
 
-			# must assign htauth_k ...
-			$DAT{htauth_k} = &remember_htauth_k();
+			$DAT{htauth_k} = &remember_htauth_k();   # assign htauth_k ...
 			&logit('login', $username, 'cyphertext password');
 			my $mins = int ($timeout/60);
 			&zap('htauth_p'); my $query_string = &query_string(\%DAT);
@@ -215,31 +213,46 @@ EOT
 <SCRIPT LANGUAGE="JavaScript"><!--
 parent.htauth_frame0.document.htauth_form0.htauth_k.value = '$DAT{htauth_k}';
 parent.htauth_frame0.document.htauth_form1.htauth_k.value = '$DAT{htauth_k}';
+parent.htauth_frame0.document.htauth_form2.htauth_k.value = '$DAT{htauth_k}';
 // -->
 </SCRIPT>
 <CENTER><P>Welcome $DAT{htauth_u}. This session lasts for $mins&nbsp;minutes.
-You may <A HREF="$ENV{SCRIPT_NAME}?htauth_x=change&$query_string">
-change your password</A> or
-<A HREF="javascript:parent.remember_htauth_p = '';
-parent.htauth_frame0.document.htauth_form2.submit();">log out</A>
+You may <A HREF="javascript:parent.htauth_change();">change your password</A>
+or <A HREF="javascript:parent.htauth_logout();">log out</A>
 if you wish.</P></CENTER>
 EOT
 			return 1;
 		}
 
 		if ($DAT{htauth_u} && $DAT{htauth_j} && $DAT{htauth_k}) {
-			# on-going JS session :-)
+
+			# ----------- JavaScript is running ; timeout ? -----------
+			my $time_from_db = &check_htauth_k();
+			if ($time_from_db < (time - $timeout)) {
+				&zap('htauth_x','htauth_k');
+				output <<EOT;
+<P><CENTER><B>Your last login has expired.</CENTER></B></P>
+<P><CENTER><A HREF="$ENV{SCRIPT_NAME}">
+Restart $ENV{SCRIPT_NAME}</A>&nbsp;.&nbsp;.&nbsp;.</CENTER></P>
+EOT
+				# should delete htauth_c,time_by_ip,user db entry ...
+				# &js_pw_login_part1();  # NOPE, wrong TARGET
+				&delete_htauth_k($DAT{htauth_k}); &footer; exit 0;
+			}
+			$AUTH_USER = $DAT{htauth_u};
+			my $mins = int (($time_from_db - time + $timeout)/60);
+
+			# ------------------ on-going JS session :-) ---------------
 			# We again assume that &tea_in_javascript resides in the FRAMESET
 			# and the hidden_forms in the frame htauth_frame0 ... &output must
 			# fiddle the ACTION= of forms in htauth_frame1 to invoke the JS.
-# must check htauth_k against database ...
 
 			eval "require 'Crypt/Tea.pm';"; if ($@) {
 				fatal ("can't require Tea.pm but htauth_t = $DAT{htauth_t} !");
 			}
 			import Crypt::Tea;
 
-			# Decrypt htauth_t and insert its contents into the $CGI object
+			# Decrypt htauth_t and insert contents into %DAT and the $CGI object
 			my $htauth_p = &get_password($DAT{htauth_u});
 			my %t = split /\0/, &Crypt::Tea::decrypt($DAT{htauth_t},$htauth_p);
 			# but stray \0 at end ? doesn't seem to matter ...
@@ -250,47 +263,43 @@ EOT
 
 			# --------- JavaScript is running ; logout ? -------
 			if ($DAT{htauth_x} eq 'logout') {
-				print <<EOT;
-<SCRIPT LANGUAGE="JavaScript"><!--
-parent.remember_htauth_p = '';
-// -->
-</SCRIPT>
-<CENTER><B>Login session finished.</B></CENTER><P>
-<CENTER><A HREF="$ENV{SCRIPT_NAME}">
-Restart $ENV{SCRIPT_NAME}</A>&nbsp;.&nbsp;.&nbsp;.</CENTER>
+				undef $AUTH_USER;
+				output <<EOT;
+<P><CENTER><B>Login session finished.</B></CENTER></P>
+<P><CENTER><A HREF="$ENV{SCRIPT_NAME}">
+Restart $ENV{SCRIPT_NAME}</A>&nbsp;.&nbsp;.&nbsp;.</CENTER></P>
 EOT
 				# should delete htauth_c,time_by_ip,user db entry ...
-				# and delete htauth_k,time_by_ip,user db entry ...
-				&footer; exit 0;
+				&delete_htauth_k($DAT{htauth_k}); &footer; exit 0;
 			}
 
 			# ------ JavaScript is running ; change password ? -----
 			if ($DAT{htauth_x} eq 'change') {
-				&footer; exit 0;
+				&set_password($dbdir, $DAT{htauth_u}, $DAT{htauth_p1});
+				output <<EOT;
+<CENTER><P>Welcome $DAT{htauth_u},
+<B>your password has been changed.</B>
+The session has $mins&nbsp;minutes remaining.
+You may <A HREF="javascript:parent.htauth_logout();">log out</A>
+if you wish.</P></CENTER>
+EOT
+				return 1;
 			}
 
 			# ------ JavaScript is running ; ongoing session :-) :-)
-			$AUTH_USER = $DAT{htauth_u};
-			# hmm, we need the same mechanism as 20 lines on ...
-			my $mins = int ($timeout/60);
-			my $query_string = &query_string(\%DAT);
-
-			# -------- JavaScript is running ; timeout ? -----------
-
 			output <<EOT;
-<CENTER><P>Welcome $DAT{htauth_u}. This session has $mins&nbsp;minutes
-remaining.
-You may <A HREF="javascript:parent.remember_htauth_p = '';
-parent.htauth_frame0.document.htauth_form2.submit();">log out</A>
+<CENTER><P>Welcome $DAT{htauth_u}. There are $mins&nbsp;minutes remaining.
+You may <A HREF="javascript:parent.htauth_logout();">log out</A>
 if you wish.</P></CENTER>
 EOT
 			return 1;
 		}
 
+		# now we do the much simpler non-JavaScript case ...
 		if ($DAT{htauth_u} && $DAT{htauth_k} && !$DAT{htauth_j}) {
-			my $time_from_db = &check_htauth_k();
 
 			# ----------- JavaScript not running ; timeout ? -----------
+			my $time_from_db = &check_htauth_k();
 			if ($time_from_db < (time - $timeout)) {
 				&zap('htauth_p','htauth_p1','htauth_p2','htauth_x','htauth_k');
 				print <<'EOT';
@@ -299,38 +308,7 @@ EOT
 				&non_js_pw_login(); &footer; exit 0;
 			}
 			$AUTH_USER = $DAT{htauth_u};
-
-			# --------- JavaScript not running ; change password ? -------
-			# XXX must go in a sub so that the JS case can use it.
-			if ($DAT{htauth_x} eq 'change') {
-				my $text = '';
-				if (! $DAT{htauth_p1} || !$DAT{htauth_p2}){
-					$text =
-					"Changing Password for $DAT{htauth_u}&nbsp;.&nbsp;.&nbsp;.";
-				} elsif ($DAT{htauth_p1} ne $DAT{htauth_p2}) {
-					$text = "The two entries must be the same&nbsp;.&nbsp;.&nbsp;.";
-				} elsif (length $DAT{htauth_p1} < 5) {
-					$text =
-					"Choose a longer password (5 chars min)&nbsp;.&nbsp;.&nbsp;.";
-				}
-				if ($text) {
-					my $f5 = CGI::FormBuilder->new(
-						text=>"$text", keepextras=>1, required=>'ALL',
-               	method=>'POST', params=>$CGI, name=>'f5',
-               	fields => [qw/htauth_p1 htauth_p2/],
-               	labels => {
-							htauth_p1=>'New password :',
-							htauth_p2=>'New password (again):'
-						},
-               	reset => 0, submit => 'Change Password',
-            	);
-            	$f5->field(name=>'htauth_p1',type=>'password');
-            	$f5->field(name=>'htauth_p2',type=>'password');
-               print '<CENTER>',$f5->render,"</CENTER>\n"; &footer; exit 0;
-            }
-				&set_password($dbdir, $DAT{htauth_u}, $DAT{htauth_p1});
-				&zap('htauth_p1','htauth_p2','htauth_x');
-			}
+			my $mins = int (($time_from_db - time + $timeout)/60);
 
 			# --------- JavaScript not running ; logout ? -------
 			if ($DAT{htauth_x} eq 'logout') { print <<EOT;
@@ -341,8 +319,10 @@ EOT
 				&delete_htauth_k($DAT{htauth_k}); &footer; exit 0;
 			}
 
+			# --------- JavaScript not running ; change password ? -------
+			if ($DAT{htauth_x} eq 'change') {  &change_password(); }
+
 			# ----- JavaScript not running and an on-going session exists
-			my $mins = int (($time_from_db - time + $timeout)/60);
 			&zap('htauth_x'); my $query_string = &query_string(\%DAT);
 			print <<EOT;
 <P>This session has $mins minutes left.  You may
@@ -459,10 +439,10 @@ Content-type: text/html
 
 <HTML><HEAD><TITLE>Sorry . . .</TITLE></HEAD>
 EOT
-		print '<BODY';
+		output '<BODY';
 		if ($bgcolor) { output " BGCOLOR=\"$bgcolor\""; }
 		if ($fgcolor) { output " TEXT=\"$fgcolor\""; }
-		print "><HR>\n";
+		output "><HR>\n";
 	}
 	output '<CENTER><B>Sorry, ', $_[$[], '</B></CENTER>'; &footer();
 }
@@ -525,7 +505,7 @@ sub logit { # &logit('login', $username);  # perhaps a logdir in config ?
 sub non_js_pw_login {
 	&zap('htauth_p');
 	my $form3 = CGI::FormBuilder->new(
-		method => 'POST', params => $CGI, name => 'htauth_form3',
+		method => 'POST', params => $CGI, name => 'htauth_form4',
 		keepextras => 1, required => 'ALL',
 		fields => [qw/htauth_u htauth_p/],
 		labels => { htauth_u=>'Username', htauth_p=>'Password' },
@@ -536,9 +516,9 @@ sub non_js_pw_login {
 }
 sub js_pw_login_part1 {
 	# BUG must forcibly preserve all _submitted_* variables from FormBuilder...
-	# foreach ($CGI->param()) { print "$_ = ", $CGI->param($_), "<BR>\n"; }
+	# foreach ($CGI->param()) { output "$_ = ", $CGI->param($_), "<BR>\n"; }
 	my $form5 = CGI::FormBuilder->new(
-		method=>'POST', params=>$CGI, name=>'htauth_form5',
+		method=>'POST', params=>$CGI, name=>'htauth_form6',
 		keepextras=>1, required=>'ALL',
 		fields => [qw/htauth_u htauth_j/], labels => { htauth_u=>'Username' },
 		submitted=>'htauth_u', reset=>0, submit=>'Login',
@@ -546,7 +526,7 @@ sub js_pw_login_part1 {
 	$form5->field(name=>'htauth_j',type=>'hidden');
 	output '<CENTER>',$form5->render, <<'EOT';
 </CENTER><SCRIPT LANGUAGE="JavaScript"><!--
-document.htauth_form5.htauth_j.value = 'yes';
+document.htauth_form6.htauth_j.value = 'yes';
 // -->
 </SCRIPT>
 EOT
@@ -581,27 +561,127 @@ Content-type: text/html
 EOT
 	print <<'EOT';
 <SCRIPT LANGUAGE="JavaScript"><!--
-// This bit comes from the CGI::Htauth.pm module ...
+// and this bit comes from the CGI::Htauth.pm module ...
+function decrypt_and_write(ascii) {
+ htauth_frame1.document.write(decrypt(ascii, remember_htauth_p));
+ htauth_frame1.document.close();
+}
+keep_in_plaintext = new Object();  // to preserve pre-authenticated app vars
+keep_in_plaintext['htauth_u'] = true;
+keep_in_plaintext['htauth_r'] = true;
+keep_in_plaintext['htauth_t'] = true;
+
+function respond_and_login(form) {
+ remember_htauth_p   = form.htauth_p.value;  // global
+ htauth_frame0.document.htauth_form0.htauth_r.value =
+  asciidigest(form.htauth_c.value + remember_htauth_p);
+ htauth_frame0.document.htauth_form0.submit();
+ return one_moment_please();
+}
+function encrypt_and_submit(form) { // nb: javascript: url passes the frame
+ var plaintext = '';
+ for (var i=0; i<form.length; i++) {
+  var e = form.elements[i];
+  if (!keep_in_plaintext[e.name]) { plaintext += (e.name+"\0"+ e.value+"\0"); }
+ }
+ htauth_frame0.document.htauth_form0.htauth_r.value = '';
+ htauth_frame0.document.htauth_form0.htauth_t.value =
+  encrypt(plaintext, remember_htauth_p);
+ htauth_frame0.document.htauth_form0.submit();
+ return one_moment_please();
+}
+// XXX BUG because this zaps preauthenticated vars, &authenticate isn't called.
+function htauth_logout () {
+ htauth_frame0.document.htauth_form2.htauth_t.value =
+  encrypt('htauth_x\0logout', remember_htauth_p);
+ remember_htauth_p = '';
+ htauth_frame0.document.htauth_form2.submit();
+ return one_moment_please();
+}
+
+function submit_htauth_change (form) {
+ var password = form.elements['password'].value;
+ if ( (! password.match(/^\S{6,20}$/)) ) {
+  alert('Error:  Password must be 6 or more\nnon-space characters');
+  return false;
+ }
+ var confirm_password = form.elements['confirm_password'].value;
+ if ( ! (confirm_password == form.password.value)) {  // need onSubmit ?
+  alert('Error: The two Password fields did not match');
+  return false;
+ }
+ htauth_frame0.document.htauth_form0.htauth_r.value = '';
+ htauth_frame0.document.htauth_form0.htauth_t.value =
+  encrypt('htauth_x\0change\0htauth_p1\0'+password, remember_htauth_p);
+ htauth_frame0.document.htauth_form0.submit();
+ remember_htauth_p = password; // hope the change will succeed on the server ..
+ return one_moment_please();
+}
+function htauth_change () {
+ var body = '<BODY';
+ var bg = htauth_frame1.document.bgColor;
+ if (bg) { body += ' BGCOLOR="' + bg + '"'; }
+ var fg = htauth_frame1.document.fgColor;
+ if (fg) { body += ' TEXT="' + fg + '"'; }
+ body += '>';
+
+ htauth_frame1.document.write (
+  '<HTML><HEAD><TITLE>CGI::Htauth.pm</TITLE></HEAD>\n' + body +
+  '<P><CENTER><B>Changing Password for ' +
+  htauth_frame0.document.htauth_form0.htauth_u.value +
+  '&nbsp;.&nbsp;.&nbsp;.</B></CENTER></P><P><CENTER><form method="POST" ' +
+'action="javascript:parent.submit_htauth_change(this.document.forms[0]);">\n'+
+  '<table><tr><td align="left"><b>New Password</b></td>\n' +
+  '<td><input name="password" type="password"></td></tr>\n' +
+  '<tr><td align="left"><b>Confirm Password</b></td>\n' +
+  '<td><input name="confirm_password" type="password"></td></tr>\n' +
+  '<tr><td colspan="2"><center>\n' +
+  '<input name="reset" type="reset" value="Clear">\n' +
+  '<input name="submit" type="submit" value="Change Password">\n' +
+  '</center></td></tr></table></form></CENTER></BODY></HTML>\n'
+ );
+}
+function one_moment_please () {
+ var returnstr = '<BODY';
+ var bg = htauth_frame1.document.bgColor;
+ if (bg) {
+  htauth_frame0.document.htauth_form0.htauth_bg.value = bg;
+  htauth_frame0.document.htauth_form1.htauth_bg.value = bg;
+  returnstr += ' BGCOLOR="' + bg + '"';
+ }
+ var fg = htauth_frame1.document.fgColor;
+ if (fg) {
+  htauth_frame0.document.htauth_form0.htauth_fg.value = fg;
+  htauth_frame0.document.htauth_form1.htauth_fg.value = fg;
+  returnstr += ' TEXT="' + fg + '"';
+ }
+ return returnstr + '><CENTER>One moment please . . .</CENTER></BODY>';
+}
+
 function load_frame0(w) {
-	w.document.write (
-	'<HTML><HEAD><TITLE>frame_0</TITLE><BODY>\n' +
+ w.document.write (
+ '<HTML><HEAD><TITLE>frame_0</TITLE><BODY>\n' +
 EOT
-	# need three forms: one to submit, one to retry, one to restart.
+	# need 3 forms: to submit, to retry, to logout
 	my %dat = %DAT;
 	delete $dat{htauth_r}; delete $dat{htauth_t};
-	print &hidden_form('htauth_form0','htauth_frame1','htauth_u',
-		$DAT{htauth_u}, 'htauth_j','yes', 'htauth_r','',
+	print &hidden_form('htauth_form0','htauth_frame1',   # encrypt and submit
+		'htauth_u',$DAT{htauth_u}, 'htauth_j','yes', 'htauth_r','',
+		'htauth_bg',$DAT{bgcolor}, 'htauth_fg',$DAT{fgcolor},
+		'htauth_k','' ,'htauth_t','',%dat);
+	print &hidden_form('htauth_form2','_parent',   # logout
+		'htauth_u',$DAT{htauth_u}, 'htauth_j','yes', 'htauth_r','',
 		'htauth_bg',$DAT{bgcolor}, 'htauth_fg',$DAT{fgcolor},
 		'htauth_k','' ,'htauth_t','',%dat);
 	delete $dat{htauth_u}; delete $dat{htauth_j};
-	print &hidden_form('htauth_form1','_parent','htauth_k','',%dat);  # retry
-	print &hidden_form('htauth_form2','_parent'); # restart
+	print &hidden_form('htauth_form1','_parent','htauth_k','',
+		'htauth_bg',$DAT{bgcolor}, 'htauth_fg',$DAT{fgcolor},%dat);  # retry
 	print <<'EOT';
-   '</BODY></HTML>\n'
-   );
+ '</BODY></HTML>\n'
+ );
 }
 function load_frame1(w) {
-	w.document.write (
+ w.document.write (
 '<HTML><HEAD><TITLE>CGI::Htauth.pm</TITLE></HEAD>\n' +
 EOT
 	my $htauth_c = &generate_htauth_c();
@@ -609,21 +689,23 @@ EOT
 $body_in_js +
 '<BR>&nbsp;<BR><CENTER><B>Welcome, $DAT{htauth_u}.<BR>&nbsp;<BR>\\n' +
 'Please enter your Password&nbsp;.&nbsp;.&nbsp;.</B><BR>&nbsp;<BR>\\n<form ' +
-'action="javascript:parent.respond_and_login(document.htauth_form4);" ' +
-'method="POST" name="htauth_form4">\\n' +
+'action="javascript:parent.respond_and_login(document.htauth_form5);" ' +
+'method="POST" name="htauth_form5">\\n' +
 '<input name="_sessionid" type="hidden" value="">\\n' +
 '<input name="htauth_c" type="hidden" value="$htauth_c">\\n' +
 '<b>Password</b> <input name="htauth_p" type="password">\\n' +
 '<input name="_submit" type="submit" value="Login"> </form>\\n' +
 '<BR>Your password will not get transmitted onto the Net :-)</CENTER>\\n' +
 '<BR><HR></BODY></HTML>\\n'
-	);
+ );
 }
 // -->
 </SCRIPT>
 </HEAD><FRAMESET ROWS="2%,98%" COLS="100%">
-<FRAME NAME="htauth_frame0" SRC="javascript:parent.load_frame0(window);">
-<FRAME NAME="htauth_frame1" SRC="javascript:parent.load_frame1(window);">
+<FRAME NAME="htauth_frame0" FRAMEBORDER=0 MARGINHEIGHT=1
+SRC="javascript:parent.load_frame0(window);">
+<FRAME NAME="htauth_frame1" FRAMEBORDER=0 MARGINHEIGHT=1
+SRC="javascript:parent.load_frame1(window);">
 </FRAMESET></HTML>
 EOT
 	exit 0;
@@ -642,10 +724,44 @@ sub hidden_form {  my ($name, $target, @var_val) = @_;
 			$seen{$var} = 1;
 		}
 	}
-	push @html, "</FORM>";
-	return "   '", (join "' +\n   '", @html), "' +\n";
+	push @html, "</FORM>' +\n";
+	return "   '". (join "' +\n   '", @html);
 }
 
+sub change_password {
+	my $text = '';
+	if (! $DAT{htauth_p1} || !$DAT{htauth_p2}){
+		$text = "Changing Password for $DAT{htauth_u}&nbsp;.&nbsp;.&nbsp;.";
+	} elsif ($DAT{htauth_p1} ne $DAT{htauth_p2}) {
+		$text = "The two entries must be the same&nbsp;.&nbsp;.&nbsp;.";
+	} elsif (length $DAT{htauth_p1} < 5) {
+		$text = "Choose a longer password (5 chars min)&nbsp;.&nbsp;.&nbsp;.";
+	}
+	if ($text) {
+		my $f5 = CGI::FormBuilder->new(
+			text=>"$text", keepextras=>1, required=>'ALL',
+        	method=>'POST', params=>$CGI, name=>'f5',
+        	fields => [qw/htauth_x htauth_p1 htauth_p2/],
+        	labels => {
+				htauth_p1=>'New password :', htauth_p2=>'New password (again):'
+			},
+        	reset => 0, submit => 'Change Password',
+     	);
+		$f5->field(name=>'htauth_x',type=>'hidden',value=>'change');
+     	$f5->field(name=>'htauth_p1',type=>'password');
+     	$f5->field(name=>'htauth_p2',type=>'password');
+      output '<CENTER>',$f5->render,"</CENTER>\n"; &footer; exit 0;
+	}
+	# security ? what if we're just fed the vars in a url ?
+	&set_password($dbdir, $DAT{htauth_u}, $DAT{htauth_p1});
+	&zap('htauth_p1','htauth_p2','htauth_x');
+	output <<EOT;  # mins ?
+<CENTER><P>Password changed for $DAT{htauth_u}.
+This session has $mins&nbsp;minutes remaining.
+You may <A HREF="javascript:parent.remember_htauth_p = '';
+parent.submit_htauth_x('logout');">log out</A> if you wish.</P></CENTER>
+EOT
+}
 sub bad_password1 {
 	my $p1 = $DAT{htauth_p1}; my $p2 = $DAT{htauth_p2};
 	if ($p1 ne $p2) { return "Passwords must match"; }
@@ -902,6 +1018,9 @@ and uses CGI::FormBuilder.pm to manage the data entry.
 Very often the cgi programmer will be using CGI::FormBuilder.pm anyway,
 to write the application.
 
+Version #VERSION#,
+#COMMENT#
+
 =head1 SUBROUTINES
 
 =over 3
@@ -944,14 +1063,8 @@ This data travels over the network in cleartext (unless you are using https).
 If the Password is valid, then a temporary session key is generated,
 which is passed back to the next invocation by hidden form variables.
 
-This routine uses the I<htauth_u>, I<htauth_p> and I<htauth_k>
-FORM variables, and if htauth.pl is also in use (???),
-then these are pushed onto the array @hidden_values to preserve them.
-It also uses the I<htauth_x> and I<htauth_n> FORM variables internally,
-to perform tasks such as changing passwords,
-and if JavaScript is available also I<htauth_c>, I<htauth_r> and I<htauth_t>
-to operate encrytion with Crypt::Tea.pm .
-Applications would be wise to avoid creating FORM variables
+This routine uses various FORM variables beginning with I<htauth_>
+and applications would be wise to avoid creating FORM variables
 beginning with I<htauth_> as these may produce Unpredictable Consequences.
 
 =item I<challenge IPADDR timestamp=0>
@@ -969,9 +1082,9 @@ a new One-time-key challenge is issued instead.
 Thus setting the timeout to less than 30 seconds (e.g. to 0, the default)
 causes a One-time-key challenge to be issued on every page.
 
-This routine uses the I<htauth_u>, I<htauth_k> FORM variables,
-and if htauth.pl is also in use,
-then these are pushed onto the array @hidden_values.
+This routine uses various FORM variables beginning with I<htauth_>
+and applications would be wise to avoid creating FORM variables
+beginning with I<htauth_> as these may produce Unpredictable Consequences.
 
 =back
 
@@ -998,67 +1111,103 @@ as these may have Unpredictable Consequences.
 
 =over 3
 
-=item I<htauth_frame0> is the almost invisible top frame
+=item I<htauth_frame0>
+
+is the almost invisible top frame
 which occurs in JavaScript login; it contains nothing but the
 hidden forms I<htauth_form0> (to submit),
-I<htauth_form1> (to log out) and I<htauth_form2> (to restart).
+I<htauth_form1> (to log in again) and
+I<htauth_form2> (to log out)
 
-=item I<htauth_frame1> is the main frame
+=item I<htauth_frame1>
+
+is the main frame
 which occurs in JavaScript login; it contains the application
 as seen by the user.
 
-=item I<htauth_form0> is the hidden form which is filled out
+=item I<htauth_form0>
+
+is the hidden form which is filled out
 by JavaScript with the encrypted data I<htauth_t> and the
 response I<htauth_r>, and is really submitted when the user thinks
 they're submitting the application form visible in I<htauth_frame1>.
+This form is also used, with I<htauth_x> = I<change>, to change password.
 
-=item I<htauth_form1> is the hidden form with a TARGET of the
+=item I<htauth_form1>
+
+is the hidden form with a TARGET of the
 main (parent) FRAMESET, which causes Htauth to ask for a new login.
 
-=item I<htauth_form2> is the hidden form with a TARGET of the
-main (parent) FRAMESET, which restarts the entire script with no variables.
+=item I<htauth_form2>
 
-=item I<htauth_form3> is the form in I<htauth_frame1> used during
+is the hidden form with a TARGET of the main (parent) FRAMESET,
+which logs the user out and restarts the entire script with no variables.
+
+=item I<htauth_form4>
+
+is the form used during
 non-JavaScript login which asks for username and password.
 
-=item I<htauth_form4> is the form in I<htauth_frame1> which just asks for
+=item I<htauth_form5>
+
+is the form in I<htauth_frame1> which just asks for
 username, used during login on a JavaScript-capable browser;
 it also sniffs to see is JavaScript is enabled.
 
-=item I<htauth_j> is a sniffer variable,
+=item I<htauth_j>
+
+is a sniffer variable,
 which the browser sets to 'yes' if JavaScript is actually enabled.
 
-=item I<htauth_form5> is the form which just asks for password,
+=item I<htauth_form6>
+
+is the form which just asks for password,
 residing in I<htauth_frame1> and
 used during password login on a JavaScript-enabled browser 
 
 =item I<htauth_u> is the htauth Username
 
-=item I<htauth_p> is a Password as entered by user;
+=item I<htauth_p>
+
+is a Password as entered by user;
 it only gets transmitted to the server if the user
 does not have a JavaScript-enabled browser.
 
-=item I<htauth_c> is the challenge issued by the server
+=item I<htauth_c>
+
+is the challenge issued by the server
 during the JavaScript password login dialogue.
 
-=item I<htauth_k> is a Session Key, generated at login by Htauth,
+=item I<htauth_k>
+
+is a Session Key, generated at login by Htauth,
 which is used during a login session.
 
-=item I<htauth_r> is the browser's Response to a challenge by the server;
+=item I<htauth_r>
+
+is the browser's Response to a challenge by the server;
 it is used both during challenge-response login,
 and during the JavaScript password login dialogue.
 
-=item I<htauth_t> is stuff encrypted by Crypt::Tea in the browser
+=item I<htauth_t>
 
-=item I<htauth_x> is a hold-all for other commands
+is stuff encrypted by Crypt::Tea in the browser
+
+=item I<htauth_x>
+
+is a hold-all for other commands
 such as change password, log out, etc etc
 
-=item I<htauth_bg> will be used during a JavaScript login session;
+=item I<htauth_bg>
+
+is used during a JavaScript login session;
 it is set to the document BGCOLOR by JavaScript in the browser,
 and is used by Htauth to set a background colour for all its
 dialogue which fits the decor of the application.
 
-=item I<htauth_fg> is likewise set to the document TEXT by JavaScript in the
+=item I<htauth_fg>
+
+is likewise set to the document TEXT by JavaScript in the
 browser, and is used by Htauth to set a foreground colour for its dialogues.
 
 =back

@@ -23,7 +23,7 @@ uses CGI::FormBuilder and CGI.pm.
 
 From a non-JavaScript browser, password login works a bit like
 username/password login usually works, except that it also checks
-that the IP and browser dont change during the seesion, handles
+that the IP and browser dont change during the session, handles
 timeouts, and offers buttons for logout and password changing.
 
 From a JavaScript browser, password login installs the encryption
